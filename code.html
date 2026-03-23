@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 & DHT11 Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 50px 20px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+        .dashboard {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .card {
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            padding: 30px;
+            width: 250px;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card h2 {
+            margin: 0;
+            font-size: 1.2rem;
+            color: #7f8c8d;
+        }
+        .value {
+            font-size: 3rem;
+            font-weight: bold;
+            margin: 15px 0;
+            color: #2980b9;
+        }
+        .time {
+            font-size: 0.9rem;
+            color: #95a5a6;
+            margin-top: 20px;
+        }
+        .error {
+            color: #e74c3c;
+            margin-top: 20px;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Bảng Theo Dõi Nhiệt Độ & Độ Ẩm</h1>
+
+    <div class="dashboard">
+        <div class="card">
+            <h2>Nhiệt Độ</h2>
+            <div class="value" id="tempValue">-- °C</div>
+        </div>
+
+        <div class="card">
+            <h2>Độ Ẩm</h2>
+            <div class="value" id="humidValue">-- %</div>
+        </div>
+    </div>
+
+    <div class="time" id="lastUpdated">Chưa có dữ liệu</div>
+    <div class="error" id="errorMsg">Không thể kết nối đến Server!</div>
+
+    <script>
+        // --- CẤU HÌNH API SERVER ---
+        // Nếu bạn chạy web này trên cùng máy tính với Node.js server, để là localhost
+        // Nếu bạn mở web này trên điện thoại/máy khác, đổi localhost thành IP của máy tính (VD: 192.168.1.xxx)
+        const API_URL = 'http://localhost:3000/api/data';
+
+        async function fetchData() {
+            try {
+                // Gọi API GET từ server
+                const response = await fetch(API_URL);
+                if (!response.ok) throw new Error("Lỗi mạng");
+                
+                const data = await response.json();
+
+                // Cập nhật giao diện nếu có dữ liệu
+                if (data.timestamp) {
+                    document.getElementById('tempValue').innerText = data.temperature + ' °C';
+                    document.getElementById('humidValue').innerText = data.humidity + ' %';
+                    document.getElementById('lastUpdated').innerText = 'Cập nhật lần cuối: ' + data.timestamp;
+                    
+                    // Ẩn thông báo lỗi nếu đang hiện
+                    document.getElementById('errorMsg').style.display = 'none';
+                }
+            } catch (error) {
+                console.error('Lỗi khi lấy dữ liệu:', error);
+                // Hiện thông báo lỗi nếu không gọi được API
+                document.getElementById('errorMsg').style.display = 'block';
+            }
+        }
+
+        // Gọi hàm lấy dữ liệu ngay khi mở trang
+        fetchData();
+
+        // Tự động gọi lại API mỗi 3 giây để cập nhật dữ liệu mới nhất
+        setInterval(fetchData, 3000);
+    </script>
+
+</body>
+</html>

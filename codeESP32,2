@@ -1,0 +1,69 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <DHT.h>
+
+const char* ssid = "404";
+const char* password = "D889696@";
+const char* serverName = "http://192.168.44.176:3000/api/data"; 
+
+#define DHTPIN 4
+#define DHTTYPE DHT11
+#define LED_PIN 2 // Chân LED
+
+DHT dht(DHTPIN, DHTTYPE);
+float thresholdFromWeb = 40.0; 
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(LED_PIN, OUTPUT);
+  
+  // Test đèn ngay khi khởi động (nếu đèn này không sáng thì là do phần cứng)
+  digitalWrite(LED_PIN, HIGH); 
+  delay(1000);
+  digitalWrite(LED_PIN, LOW);
+
+  dht.begin();
+  WiFi.begin(ssid, password);
+  while(WiFi.status() != WL_CONNECTED) { delay(500); Serial.print("."); }
+  Serial.println("\nWiFi Connected");
+}
+
+void loop() {
+  if(WiFi.status() == WL_CONNECTED){
+    float h = dht.readHumidity();
+    float t = dht.readTemperature();
+
+    if (isnan(h) || isnan(t)) return;
+
+    HTTPClient http;
+    http.begin(serverName);
+    http.addHeader("Content-Type", "application/json");
+
+    String jsonBody = "{\"temperature\":" + String(t) + ",\"humidity\":" + String(h) + "}";
+    int httpResponseCode = http.POST(jsonBody);
+
+    if (httpResponseCode > 0) {
+      String response = http.getString();
+      
+      int index = response.indexOf("\"currentThreshold\":");
+      if (index != -1) {
+          // Cắt chuỗi lấy giá trị số phía sau dấu hai chấm
+          String valStr = response.substring(index + 19, response.indexOf("}", index));
+          thresholdFromWeb = valStr.toFloat();
+      }
+      
+      Serial.printf("T: %.2f | Ngưỡng: %.2f | ", t, thresholdFromWeb);
+
+      // Điều khiển LED
+      if (t >= thresholdFromWeb) {
+        digitalWrite(LED_PIN, HIGH); 
+        Serial.println("TRẠNG THÁI: BẬT LED");
+      } else {
+        digitalWrite(LED_PIN, LOW);  
+        Serial.println("TRẠNG THÁI: TẮT LED");
+      }
+    }
+    http.end();
+  }
+  delay(3000); 
+}

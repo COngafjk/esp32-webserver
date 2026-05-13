@@ -1,0 +1,132 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h> 
+#include <HTTPClient.h>
+#include <DHT.h>
+#include <ArduinoJson.h>      
+
+// --- 1. CẤU HÌNH THÔNG SỐ KẾT NỐI ---
+const char* ssid = "meomeo";
+const char* password = "12345678";
+
+const char* serverUpdate = "https://ketnoicloud.onrender.com/update";
+const char* serverGetConfig = "https://ketnoicloud.onrender.com/get-config";
+
+// --- 2. KHAI BÁO CHÂN CẮM (PINOUT) ---
+#define DHT_PIN 4      
+#define DHT_TYPE DHT11 
+#define MQ135_PIN 34   
+#define LED_PIN 19     
+#define BUZZER_PIN 18  
+
+// --- 3. KHỞI TẠO ĐỐI TƯỢNG VÀ BIẾN TOÀN CỤC ---
+DHT dht(DHT_PIN, DHT_TYPE);
+float tempThreshold = 35.0; 
+int gasThreshold = 2000;    
+bool buzzerEnabled = true; // THÊM: Trạng thái còi từ Web
+bool ledEnabled = true;    // THÊM: Trạng thái LED từ Web
+unsigned long prevMillis = 0;
+
+void setup() {
+  Serial.begin(9600); // Khuyên dùng 115200 cho ESP32
+  dht.begin();
+  
+  pinMode(LED_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+  
+  WiFi.begin(ssid, password);
+  Serial.print("Dang ket noi WiFi");
+  while(WiFi.status() != WL_CONNECTED) { 
+    delay(500); 
+    Serial.print("."); 
+  }
+  Serial.println("\nWiFi da ket noi thanh cong!");
+}
+
+void loop() {
+  if (millis() - prevMillis >= 3000) {
+    prevMillis = millis();
+
+    float t = dht.readTemperature(); 
+    float h = dht.readHumidity();    
+    int gas = analogRead(MQ135_PIN); 
+
+    if (isnan(t) || isnan(h)) {
+      Serial.println("Loi: Khong doc duoc DHT11!");
+      return; 
+    }
+
+    Serial.println("--- THONG SO HIEN TAI ---");
+    Serial.printf("Nhiet do: %.2f *C | Do am: %.2f %% | Khi Gas: %d\n", t, h, gas);
+    Serial.printf("Nguong: T > %.1f, G > %d | Cho phep: Coi=%s, LED=%s\n", 
+                  tempThreshold, gasThreshold, 
+                  buzzerEnabled ? "BAT" : "TAT", 
+                  ledEnabled ? "BAT" : "TAT");
+
+    // --- BƯỚC 3: LOGIC CẢNH BÁO (CÓ KIỂM TRA QUYỀN TỪ WEB) ---
+    bool isAlert = (t > tempThreshold || gas > gasThreshold);
+
+    if (isAlert) {
+      Serial.println("!!! CANH BAO: Phat hien bat thuong !!!");
+      
+      // Chỉ hú còi nếu Server cho phép (buzzerEnabled == true)
+      // Chỉ bật LED nếu Server cho phép (ledEnabled == true)
+      for(int i=0; i<3; i++) { 
+        if(ledEnabled) digitalWrite(LED_PIN, HIGH); 
+        if(buzzerEnabled) digitalWrite(BUZZER_PIN, HIGH);
+        
+        delay(100);
+        
+        digitalWrite(LED_PIN, LOW); 
+        digitalWrite(BUZZER_PIN, LOW);
+        
+        delay(100);
+      }
+    }
+
+    // --- BƯỚC 4: TRUYỀN DỮ LIỆU LÊN CLOUD (HTTPS) ---
+    if(WiFi.status() == WL_CONNECTED) {
+      WiFiClientSecure client;
+      client.setInsecure(); 
+
+      HTTPClient http;
+
+      // 4.1 Gửi dữ liệu (POST request)
+      http.begin(client, serverUpdate); 
+      http.addHeader("Content-Type", "application/json");
+
+      String jsonPayload = "{\"nhiet_do\":" + String(t) + 
+                           ",\"do_am\":" + String(h) + 
+                           ",\"khi_gas\":" + String(gas) + 
+                           ",\"canh_bao\":" + (isAlert ? "true" : "false") + "}";
+
+      int httpResponseCode = http.POST(jsonPayload);
+      Serial.print("Trang thai gui du lieu: ");
+      Serial.println(httpResponseCode); 
+      http.end();
+
+      // 4.2 Lấy cấu hình ngưỡng VÀ trạng thái nút bấm từ Web (GET request)
+      http.begin(client, serverGetConfig); 
+      int httpGetCode = http.GET();
+      
+      if (httpGetCode == 200) {
+        String payload = http.getString();
+        DynamicJsonDocument doc(512); // Tăng lên 512 để chứa thêm biến mới
+        DeserializationError error = deserializeJson(doc, payload);
+        
+        if (!error) {
+          tempThreshold = doc["tempThreshold"];
+          gasThreshold = doc["gasThreshold"];
+          
+          // CẬP NHẬT TRẠNG THÁI NÚT BẤM TỪ WEB
+          buzzerEnabled = doc["buzzerEnabled"];
+          ledEnabled = doc["ledEnabled"];
+          
+          Serial.println("Da dong bo cau hinh tu Server!");
+        }
+      }
+      http.end();
+    }
+    Serial.println("------------------------\n");
+  }
+}

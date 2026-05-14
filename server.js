@@ -3,7 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const mongoose = require('mongoose'); 
-const axios = require('axios'); // THÊM MỚI: Thư viện để gửi request tới Telegram
+const axios = require('axios'); //Thư viện để gửi request tới Telegram
 
 const app = express();
 const server = http.createServer(app);
@@ -94,10 +94,9 @@ app.post('/update', async (req, res) => {
         
         await newLog.save();
 
-        // --- THÊM MỚI: TỰ ĐỘNG GỬI TELEGRAM KHI CÓ CẢNH BÁO ---
+        // TỰ ĐỘNG GỬI TELEGRAM KHI CÓ CẢNH BÁO ---
 
         if (isAlertStatus) {
-            // LƯU Ý: Thay 'ketnoicloud.onrender.com' bằng link thực tế của bạn trên Render
             const baseUrl = `https://ketnoicloud.onrender.com`; 
 
             const msg = `🚨 <b>CẢNH BÁO HỆ THỐNG IOT</b> 🚨\n\n` +
